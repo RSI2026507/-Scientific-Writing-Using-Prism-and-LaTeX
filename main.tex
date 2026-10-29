@@ -1,0 +1,524 @@
+\documentclass[12pt,a4paper]{article}
+
+% ------------------------------------------------
+% Packages
+% ------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+% ------------------------------------------------
+% Bibliography
+% ------------------------------------------------
+\usepackage[
+    backend=biber,
+    style=numeric,
+    sorting=none
+]{biblatex}
+
+\addbibresource{reference.bib}
+
+% ------------------------------------------------
+% Title
+% ------------------------------------------------
+\title{
+    Retrieval Quality as the Primary Failure Point in RAG-Based and Agentic Research Assistants
+}
+
+\author{Abhishek}
+\date{}
+
+% ------------------------------------------------
+% Document
+% ------------------------------------------------
+\begin{document}
+
+\maketitle
+
+% =================================================
+\section{Abstract}
+% =================================================
+
+Retrieval-Augmented Generation (RAG) systems combine information retrieval
+with large language models to improve the factual grounding of generated
+responses. However, retrieval quality remains a critical determinant of
+overall system reliability. When relevant, sufficient, authoritative, and
+temporally valid evidence is not retrieved, even a capable language model
+may generate an incomplete or incorrect answer.
+
+Recent developments in agentic research assistants have further increased
+the importance of retrieval because these systems perform multi-step
+information-seeking, query reformulation, browsing, evidence synthesis,
+and iterative reasoning. This paper examines retrieval quality as a primary
+failure point in RAG-based and agentic research assistants. It reviews
+retrieval failures, query formulation, evidence coverage, reranking,
+verification, adaptive retrieval, and evidence-aware generation.
+
+The paper argues that retrieval should not be treated merely as a
+preprocessing stage but as an adaptive and evidence-aware component of the
+complete research-assistant pipeline.
+
+% =================================================
+\section{Keywords}
+% =================================================
+
+Retrieval-Augmented Generation, RAG, Agentic RAG, Information Retrieval,
+Evidence Retrieval, Query Reformulation, Retrieval Quality, Evidence
+Verification, Research Assistants, Large Language Models
+
+% =================================================
+\section{Introduction}
+\label{sec:introduction}
+% =================================================
+
+Retrieval-Augmented Generation (RAG) has emerged as an important approach
+for improving the factual grounding and knowledge access capabilities of
+large language models (LLMs). Instead of relying exclusively on knowledge
+encoded in model parameters, RAG systems retrieve external information and
+provide the retrieved evidence to the generation model
+\cite{lewis2020rag}.
+
+The retrieval component therefore plays a fundamental role in determining
+the quality of the final response. A generation model cannot reliably use
+information that was never retrieved. Consequently, retrieval failures can
+propagate directly into generation failures.
+
+A useful approximation of this dependency can be expressed as shown in
+Equation~\ref{eq:reliability-decomposition}.
+
+\begin{equation}
+P(\text{correct answer})
+\approx
+P(\text{retrieve sufficient evidence})
+\times
+P(\text{use evidence correctly} \mid \text{evidence retrieved})
+\times
+P(\text{generate correctly} \mid \text{evidence used}).
+\label{eq:reliability-decomposition}
+\end{equation}
+
+This formulation highlights retrieval as an important reliability
+bottleneck. Even when the language model has strong reasoning and
+generation capabilities, insufficient evidence retrieval can constrain the
+quality of the final answer.
+
+Traditional dense retrieval methods have substantially improved semantic
+search. Dense Passage Retrieval (DPR), for example, demonstrated the
+effectiveness of dense representations for open-domain question answering
+\cite{karpukhin2020dpr}. Evaluation benchmarks such as BEIR subsequently
+highlighted the difficulty of generalizing retrieval systems across diverse
+datasets and domains \cite{thakur2021beir}.
+
+Recent research has also demonstrated that retrieving information is not
+sufficient by itself. The position and distribution of retrieved evidence
+can affect the ability of language models to use that evidence effectively
+\cite{liu2024lostmiddle}. Query expansion and alternative query generation
+methods have therefore become increasingly important for improving
+retrieval coverage \cite{gao2023hyde,wang2023query2doc}.
+
+The emergence of agentic research assistants further complicates the
+retrieval problem. Agentic systems may execute multiple searches, interact
+with web environments, reformulate queries, and iteratively collect
+evidence. Systems such as WebArena and WebVoyager illustrate the increasing
+importance of autonomous web interaction and information acquisition
+\cite{zhou2024webarena,he2024webvoyager}.
+
+This paper investigates retrieval quality as a primary failure point in
+RAG-based and agentic research assistants and examines how adaptive,
+evidence-aware retrieval mechanisms can improve system reliability. The
+proposed reliability framework is developed in
+Section~\ref{sec:framework} and the corresponding pipeline is presented in
+Section~\ref{sec:pipeline}.
+
+% =================================================
+\section{Background and Related Work}
+\label{sec:background}
+% =================================================
+
+\subsection{Retrieval-Augmented Generation}
+
+RAG combines a retrieval mechanism with a generative language model.
+The retrieval component searches an external knowledge source, while the
+generator uses the retrieved information to produce an answer
+\cite{lewis2020rag}.
+
+The basic RAG pipeline can be represented as:
+
+\[
+\text{Query}
+\rightarrow
+\text{Retriever}
+\rightarrow
+\text{Retrieved Evidence}
+\rightarrow
+\text{Generator}
+\rightarrow
+\text{Answer}.
+\]
+
+Although this architecture is conceptually simple, retrieval quality
+strongly affects the final answer.
+
+\subsection{Dense Retrieval}
+
+Dense retrieval represents queries and documents in vector space and
+retrieves documents based on semantic similarity. DPR demonstrated that
+dense passage retrieval can outperform traditional retrieval approaches
+for several open-domain question-answering settings
+\cite{karpukhin2020dpr}.
+
+However, semantic similarity does not necessarily guarantee that retrieved
+documents contain all information required to answer a question.
+
+\subsection{Retrieval Evaluation}
+
+The BEIR benchmark demonstrated that retrieval systems can behave
+differently across datasets and domains, highlighting the importance of
+robust and generalizable retrieval evaluation
+\cite{thakur2021beir}.
+
+Traditional retrieval metrics such as recall, precision, and ranking
+quality are useful, but RAG systems require additional evaluation of
+evidence sufficiency and downstream answer quality.
+
+RAGAS introduced an evaluation framework for assessing RAG pipelines using
+metrics related to faithfulness, answer relevance, and context relevance
+\cite{es2024ragas}.
+
+ARES similarly focuses on automated evaluation of retrieval-augmented
+generation systems \cite{saadfalcon2024ares}.
+
+% =================================================
+\section{Retrieval as an Evidence Bottleneck}
+\label{sec:bottleneck}
+% =================================================
+
+A central problem in RAG systems is that retrieval errors can propagate
+through the remainder of the pipeline.
+
+Let the required evidence for answering a question be:
+
+\begin{equation}
+E^{*} = \{e_1,e_2,\ldots,e_n\}.
+\label{eq:required-evidence}
+\end{equation}
+
+Let the retrieved evidence be:
+
+\begin{equation}
+R = \{r_1,r_2,\ldots,r_k\}.
+\label{eq:retrieved-evidence}
+\end{equation}
+
+For reliable answering, the retrieved information should provide adequate
+coverage of the required evidence, as expressed in
+Equation~\ref{eq:coverage}.
+
+\begin{equation}
+E^{*} \subseteq coverage(R).
+\label{eq:coverage}
+\end{equation}
+
+When important evidence is absent, the generation model may be forced to
+infer missing information, rely on parametric knowledge, or produce an
+unsupported answer.
+
+This problem becomes more significant for multi-hop questions where the
+answer depends on multiple pieces of evidence.
+
+% =================================================
+\section{Retrieval Failure Modes}
+\label{sec:failure-modes}
+% =================================================
+
+\subsection{Low Recall}
+
+Low recall occurs when relevant information exists in the knowledge source
+but is not retrieved. This is particularly problematic when the missing
+evidence contains a critical fact required for answering the query.
+
+\subsection{Low Precision}
+
+Retrieval systems can also return large quantities of irrelevant evidence.
+This increases the context size and can make it harder for the language
+model to identify useful information.
+
+\subsection{Incomplete Evidence Coverage}
+
+A retrieval system may retrieve individually relevant documents without
+retrieving the complete evidence chain required for a multi-hop answer.
+
+\subsection{Evidence Position}
+
+The location of relevant information within a long context can influence
+model performance. The ``lost in the middle'' phenomenon demonstrates that
+models may underutilize information placed in certain positions within
+long contexts \cite{liu2024lostmiddle}.
+
+\subsection{Temporal Staleness}
+
+Information may become outdated over time. Therefore, retrieval quality
+should consider the temporal validity of retrieved evidence.
+
+\subsection{Source Authority}
+
+Relevant information is not necessarily reliable information. Research
+assistants therefore need mechanisms for assessing the authority and
+credibility of sources.
+
+% =================================================
+\section{Query Formulation and Multi-Representation Retrieval}
+\label{sec:query-formulation}
+% =================================================
+
+The quality of retrieval depends partly on the formulation of the search
+query.
+
+For a complex information need $Q$, the system may generate multiple
+representations, as shown in Equation~\ref{eq:query-representations}.
+
+\begin{equation}
+Q \rightarrow \{q_1,q_2,\ldots,q_m\}.
+\label{eq:query-representations}
+\end{equation}
+
+Each representation can target a different aspect of the information need.
+
+HyDE demonstrated the use of hypothetical documents to improve dense
+retrieval by transforming queries into representations that more closely
+resemble retrieved documents \cite{gao2023hyde}.
+
+Query2doc similarly explores query expansion using generated textual
+representations \cite{wang2023query2doc}.
+
+These approaches suggest that retrieval should not necessarily rely on a
+single literal query representation.
+
+% =================================================
+\section{Current Approaches for Improving Retrieval}
+\label{sec:current-approaches}
+% =================================================
+
+\subsection{Corrective Retrieval}
+
+Corrective RAG introduces mechanisms for identifying poor retrieval results
+and performing corrective actions when retrieved information is inadequate
+\cite{yan2024crag}.
+
+The central idea is that retrieval should be evaluated before generation
+rather than blindly passed to the language model.
+
+\subsection{Self-Reflective Retrieval}
+
+Self-RAG introduces reflection mechanisms that allow a language model to
+evaluate retrieved information and its own generation process
+\cite{asai2024selfrag}.
+
+This provides a mechanism for incorporating retrieval and self-reflection
+into the generation process.
+
+\subsection{Retrieval-Aware Ranking}
+
+RankRAG investigates ranking and instruction-based approaches for improving
+the use of retrieved information \cite{yu2024rankrag}.
+
+Ranking is important because a retrieval system may return more evidence
+than can be effectively processed by the generator.
+
+\subsection{Retrieval Evaluation and Error Analysis}
+
+RAGChecker provides a framework for fine-grained evaluation and diagnosis
+of RAG systems \cite{ru2024ragchecker}.
+
+RAGTruth focuses on detecting hallucination-related issues in
+retrieval-augmented generation systems \cite{niu2024ragtruth}.
+
+These approaches demonstrate the importance of evaluating retrieval and
+generation as interconnected components.
+
+% =================================================
+\section{Agentic Research Assistants}
+\label{sec:agentic}
+% =================================================
+
+Agentic research assistants extend conventional RAG systems by introducing
+planning, iterative retrieval, web browsing, tool use, and multi-step
+reasoning.
+
+Systems designed for complex research tasks may perform several retrieval
+operations rather than executing a single search.
+
+STORM demonstrates an approach for automated research and article
+generation through structured information gathering and multi-perspective
+search \cite{shao2024storm}.
+
+Recent research has also explored search-oriented reasoning and deep
+research systems \cite{li2025searcho1,zheng2025deepresearcher,
+schmidgall2025agentlaboratory}.
+
+Web-based agent benchmarks such as WebArena and WebVoyager demonstrate the
+complexity of autonomous interaction with web environments
+\cite{zhou2024webarena,he2024webvoyager}.
+
+Mind2Web further demonstrates the challenge of using language models for
+web interaction and task execution \cite{deng2023mind2web}.
+
+These systems reinforce the importance of reliable retrieval across
+multiple steps of an agentic workflow, as discussed further in
+Section~\ref{sec:challenges}.
+
+% =================================================
+\section{Retrieval Reliability Framework}
+\label{sec:framework}
+% =================================================
+
+A retrieval reliability framework can be represented as shown in
+Equation~\ref{eq:reliability-tuple}.
+
+\begin{equation}
+E = (R,P,C,A,T,D,V,U,G),
+\label{eq:reliability-tuple}
+\end{equation}
+
+where:
+
+\begin{itemize}
+    \item $R$ = retrieval recall,
+    \item $P$ = retrieval precision,
+    \item $C$ = evidence coverage,
+    \item $A$ = source authority,
+    \item $T$ = temporal validity,
+    \item $D$ = source diversity,
+    \item $V$ = evidence verification,
+    \item $U$ = evidence utilization,
+    \item $G$ = generation quality.
+\end{itemize}
+
+This formulation treats retrieval reliability as a multidimensional
+property rather than a single retrieval metric.
+
+% =================================================
+\section{Proposed Retrieval Reliability Pipeline}
+\label{sec:pipeline}
+% =================================================
+
+A reliable retrieval pipeline, building on the framework in
+Section~\ref{sec:framework}, can be organized into the following stages.
+
+\subsection{Information-Need Analysis}
+
+The system first identifies the actual information requirement behind the
+user's question.
+
+\subsection{Multi-Representation Querying}
+
+The original query is transformed into multiple query representations to
+increase retrieval coverage.
+
+\subsection{High-Recall Retrieval}
+
+The retrieval stage prioritizes obtaining potentially relevant evidence
+before aggressive filtering.
+
+\subsection{Evidence-Aware Reranking}
+
+Retrieved documents are reranked according to relevance, evidence
+coverage, authority, and other reliability criteria.
+
+\subsection{Evidence Verification}
+
+The system checks whether the retrieved evidence actually supports the
+information requirement.
+
+\subsection{Adaptive Retrieval}
+
+If the evidence is insufficient, the system performs additional retrieval,
+query reformulation, or source exploration.
+
+\subsection{Evidence-Constrained Generation}
+
+The final response should be generated using verified evidence rather than
+unsupported assumptions.
+
+% =================================================
+\section{Challenges and Limitations}
+\label{sec:challenges}
+% =================================================
+
+Several challenges remain.
+
+First, retrieval quality is difficult to evaluate using a single metric.
+High recall does not necessarily imply that the retrieved evidence is
+sufficient for answering a complex question.
+
+Second, multi-hop information needs require evidence from multiple sources.
+A retrieval system may retrieve relevant individual documents while still
+failing to establish the complete evidence chain.
+
+Third, source authority and temporal validity are difficult to measure
+automatically.
+
+Fourth, increasing retrieval depth may improve coverage but also increase
+context size, computational cost, and irrelevant information.
+
+Finally, agentic systems introduce additional failure opportunities because
+errors can accumulate across multiple retrieval and reasoning steps.
+
+% =================================================
+\section{Research Gaps and Future Directions}
+\label{sec:future-directions}
+% =================================================
+
+Future research should investigate adaptive retrieval systems that
+dynamically determine when additional evidence is required.
+
+An important direction is evidence-aware stopping. Instead of retrieving a
+fixed number of documents, the system should determine whether the current
+evidence set is sufficient for the information need.
+
+Another important direction is source-aware retrieval. Retrieval systems
+should incorporate source authority, temporal validity, diversity, and
+cross-source agreement.
+
+Future research should also investigate retrieval mechanisms specifically
+designed for multi-hop and agentic research tasks.
+
+Evaluation should move beyond conventional retrieval metrics toward
+end-to-end measures of evidence sufficiency, verification, utilization,
+and answer reliability.
+
+% =================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% =================================================
+
+Retrieval quality is a critical determinant of reliability in
+retrieval-augmented and agentic research assistants. Retrieval failures can
+propagate into downstream reasoning and generation, making it difficult for
+even capable language models to produce reliable answers.
+
+Existing research has introduced dense retrieval, query expansion,
+corrective retrieval, self-reflection, ranking, retrieval evaluation, and
+agentic web interaction. However, these approaches do not completely solve
+the problem of determining whether the retrieved evidence is sufficient,
+reliable, diverse, current, and properly utilized.
+
+A more reliable research assistant therefore requires an adaptive,
+evidence-aware retrieval pipeline that integrates information-need
+analysis, multi-representation querying, high-recall retrieval,
+evidence-aware reranking, verification, adaptive retrieval, and
+evidence-constrained generation, as outlined in
+Section~\ref{sec:pipeline}.
+
+% =================================================
+% References
+% =================================================
+
+\printbibliography
+
+\end{document}
